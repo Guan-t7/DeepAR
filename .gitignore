@@ -10,3 +10,5 @@ nohup.out
 .DS_Store
 *.npy
 *.csv
+data/elect/LD2011_2014.txt
+explore.ipynb
