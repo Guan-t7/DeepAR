@@ -190,7 +190,7 @@ if __name__ == '__main__':
     logger.info('Loading the datasets...')
 
     test_set = TestDataset(data_dir, args.dataset, params.num_class)
-    test_loader = DataLoader(test_set, batch_size=params.predict_batch, sampler=RandomSampler(test_set), num_workers=4)
+    test_loader = DataLoader(test_set, batch_size=params.predict_batch, sampler=RandomSampler(test_set), num_workers=0)
     logger.info('- done.')
 
     print('model: ', model)

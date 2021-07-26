@@ -203,8 +203,8 @@ if __name__ == '__main__':
     train_set = TrainDataset(data_dir, args.dataset, params.num_class)
     test_set = TestDataset(data_dir, args.dataset, params.num_class)
     sampler = WeightedSampler(data_dir, args.dataset) # Use weighted sampler instead of random sampler
-    train_loader = DataLoader(train_set, batch_size=params.batch_size, sampler=sampler, num_workers=4)
-    test_loader = DataLoader(test_set, batch_size=params.predict_batch, sampler=RandomSampler(test_set), num_workers=4)
+    train_loader = DataLoader(train_set, batch_size=params.batch_size, sampler=sampler, num_workers=0)
+    test_loader = DataLoader(test_set, batch_size=params.predict_batch, sampler=RandomSampler(test_set), num_workers=0)
     logger.info('Loading complete.')
 
     logger.info(f'Model: \n{str(model)}')
