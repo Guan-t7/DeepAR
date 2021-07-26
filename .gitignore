@@ -8,7 +8,14 @@ __pycache__/
 
 nohup.out
 .DS_Store
+
+# data
 *.npy
 *.csv
 data/elect/LD2011_2014.txt
+
 explore.ipynb
+
+# ckp
+**/*.pt
+runs/
