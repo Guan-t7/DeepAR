@@ -14,7 +14,7 @@ nohup.out
 *.csv
 data/elect/LD2011_2014.txt
 
-explore.ipynb
+# explore.ipynb
 
 # ckp
 **/*.pt
