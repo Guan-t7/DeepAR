@@ -15,38 +15,50 @@ writer = SummaryWriter(purge_step=0, )
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # parameters
-BATCH_SIZE = 64
-N_EPOCHS = 12
+BATCH_SIZE = 256
+N_EPOCHS = 6
 
 COND_STEPS = 7*24*4
 PRED_STEPS = 24*4
+
+N_CLNT = 370
 
 # data
 # one sample: a window that forecast [7d:8d), conditioned by [0:7d)
 class SeriesDataset(Dataset):
     def __init__(self, z, x, train: bool = True):
+        '''from np.ndarray
+        z[tm, clnt]
+        x[tm, tm_covari]
+        '''
         self.z = z
         self.x = x
         self.wnd = COND_STEPS+PRED_STEPS
         # 1D separation between samples
         self.stride = PRED_STEPS
 
-    def __len__(self):
+        global N_CLNT
+        N_CLNT = self.z.shape[1]
         # actual wnd sz go beyond for 1 dp due to lstm char
-        return (self.z.shape[0] - self.wnd - 1) // self.stride + 1
+        self.ser_len = (self.z.shape[0] - self.wnd - 1) // self.stride + 1
+
+    def __len__(self):
+        return N_CLNT * self.ser_len
 
     def __getitem__(self, index):
+        data_i = index // self.ser_len
+        index -= self.ser_len * data_i
         index *= self.stride
         # past observations; scale handling
-        z = self.z[...,index:index + self.wnd]
+        z = self.z[index: index + self.wnd, data_i]
         v = z[:COND_STEPS].mean(keepdims=True) + 1
         # covariates
-        x = self.x[index + 1:index + 1 + self.wnd]
+        x = self.x[index + 1: index + 1 + self.wnd]
         data = np.concatenate((np.expand_dims(z, 1), x), axis=1)
         # forecast
         index += COND_STEPS
-        label = self.z[index + 1:index + 1 + PRED_STEPS]
-        return data, v, label
+        label = self.z[index + 1: index + 1 + PRED_STEPS, data_i]
+        return data_i, data, v, label
 
 def get_data(bs):
     train_z = np.load(f"data/train_z.npy").astype('float32')
@@ -64,8 +76,9 @@ def get_data(bs):
 class MyNet(nn.Module):
     def __init__(self, params=None):
         super(MyNet, self).__init__()
-        #todo multi..embed
-        self.lstm = nn.LSTM(input_size=1+5, hidden_size=40, num_layers=3,
+        
+        self.embedding = nn.Embedding(N_CLNT, 20)
+        self.lstm = nn.LSTM(input_size=1+5+20, hidden_size=40, num_layers=3,
                             batch_first=True)
         self.distribution_mu = nn.Linear(40, 1)
         self.distribution_sigma = nn.Sequential(
@@ -73,8 +86,16 @@ class MyNet(nn.Module):
             nn.Softplus(),
         )
 
-    def forward(self, x: 'torch.Tensor[float, float, float]', hx=None):
-        lstm_out, hx = self.lstm(x, hx)
+    def forward(self, idx: 'torch.IntTensor', x: 'torch.Tensor', hx=None):
+        '''
+        x[batch, seq_len, feat]
+        idx[batch]
+        '''
+        embed = self.embedding(idx)
+        # [batch, feat] -> [batch, seq_len, feat]
+        embed = torch.unsqueeze(embed, 1).expand(-1, x.shape[1], -1)
+        lstm_in = torch.cat((x, embed), 2)
+        lstm_out, hx = self.lstm(lstm_in, hx)
         mu = self.distribution_mu(lstm_out)
         sigma = self.distribution_sigma(lstm_out)
         return mu.squeeze(), sigma.squeeze(), hx
@@ -97,12 +118,13 @@ def fit(epochs, model, loss_fn, opt, train_dl, valid_dl):
     loss_train = .0
     for epoch in range(epochs):
         model.train()
-        for data, v, label in train_dl:
-            data, v, label = data.to(DEVICE), v.to(DEVICE), label.to(DEVICE)
+        for data_i, data, v, label in train_dl:
+            data_i, data, = data_i.to(DEVICE), data.to(DEVICE),
+            v, label = v.to(DEVICE), label.to(DEVICE)
             # scale input z
             data[...,0] /= v
             # feed nn a mini-batch. Forward pass
-            mu, sigma, hx = model(data)
+            mu, sigma, hx = model(data_i, data)
             # scale output
             mu = mu[:, -PRED_STEPS:] * v
             sigma = sigma[:, -PRED_STEPS:] * v
@@ -114,28 +136,14 @@ def fit(epochs, model, loss_fn, opt, train_dl, valid_dl):
                 opt.zero_grad()
             # accumulate loss
             loss_train += loss.item()
-            # log every ... mini-batches
-            if Nb_batch % 4 == 0:
-                writer.add_scalar('Loss/train', loss_train / (4*BATCH_SIZE),
+            LOG_EVERY = 4  # ... mini-batches
+            if Nb_batch % LOG_EVERY == 0:
+                writer.add_scalar('Loss/train', loss_train / LOG_EVERY,
                                 Nb_batch)
                 loss_train = .0
             Nb_batch += 1
         model.eval()
-    #     with torch.no_grad():
-    #         running_loss = 0.0
-    #         for i, data in enumerate(valid_dl):
-    #             xb, yb = data
-    #             xb, yb = xb.to(DEVICE), yb.to(DEVICE)
-    #             loss = loss_batch(model, loss_fn, xb, yb)
-    #             running_loss += loss
 
-    # # log a Matplotlib Figure showing the model's predictions on a
-    # # random mini-batch
-    # images, labels = next(iter(valid_dl))
-    # images, labels = images.to(DEVICE), labels.to(DEVICE)
-    # with torch.no_grad():
-    #     writer.add_figure('predictions vs. actuals',
-    #                       plot_classes_preds(model, images, labels))
     return model, opt
 
 
