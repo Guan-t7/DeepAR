@@ -1,6 +1,8 @@
 # DeepAR: Probabilistic Forecasting with Autoregressive Recurrent Networks
 Reimplementation of the DeepAR paper(https://arxiv.org/abs/1704.04110) in PyTorch.
 
+Naive impl of core fit logic in `MyNet.py` and `explore.ipynb`. (Guan)
+
 ## Authors:
 * **Yunkai Zhang**(<yunkai_zhang@ucsb.edu>) - *University of California, Santa Barbara* 
 
